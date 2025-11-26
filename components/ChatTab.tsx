@@ -35,17 +35,48 @@ export default function ChatTab({
     }
   }, [selectedProvider]);
 
-  // 从Binance获取价格数据
+  // 从CoinGecko获取价格数据（Binance被地理位置限制）
   const fetchBinancePrices = async (): Promise<PriceData[]> => {
     try {
-      const response = await fetch('https://fapi.binance.com/fapi/v1/ticker/price');
+      // 币种与CoinGecko ID的映射
+      const coinGeckoMap: Record<string, string> = {
+        BTC: 'bitcoin',
+        ETH: 'ethereum',
+        SOL: 'solana',
+        ADA: 'cardano',
+        XRP: 'ripple',
+        BNB: 'binancecoin',
+        DOGE: 'dogecoin',
+        LINK: 'chainlink',
+        MATIC: 'matic-network',
+        AVAX: 'avalanche-2'
+      };
+
+      const ids = Object.values(coinGeckoMap).join(',');
+      const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`);
+      
       if (!response.ok) {
-        throw new Error('Failed to fetch from Binance');
+        throw new Error(`Failed to fetch from CoinGecko: ${response.status}`);
       }
-      const data: PriceData[] = await response.json();
-      return data;
+      
+      const data = await response.json();
+      console.log('CoinGecko price data received:', data);
+
+      // 转换为 PriceData 格式
+      const priceData: PriceData[] = [];
+      for (const [symbol, coinGeckoId] of Object.entries(coinGeckoMap)) {
+        if (data[coinGeckoId]?.usd) {
+          priceData.push({
+            symbol: `${symbol}USDT`,
+            price: data[coinGeckoId].usd
+          });
+        }
+      }
+
+      console.log(`Converted ${priceData.length} prices to PriceData format`);
+      return priceData;
     } catch (err) {
-      console.error('Failed to fetch Binance prices:', err);
+      console.error('Failed to fetch prices from CoinGecko:', err);
       return [];
     }
   };
@@ -53,10 +84,20 @@ export default function ChatTab({
   // 检查消息是否包含价格查询
   const containsPriceQuery = (text: string): boolean => {
     const lowerText = text.toLowerCase();
-    return cryptoSymbols.some(symbol => 
-      lowerText.includes(symbol.toLowerCase()) && 
-      (lowerText.includes('价格') || lowerText.includes('price') || lowerText.includes('建议') || lowerText.includes('advice'))
+    
+    // 检查是否包含加密货币符号
+    const hasCryptoSymbol = cryptoSymbols.some(symbol => 
+      lowerText.includes(symbol.toLowerCase())
     );
+    
+    // 检查是否包含价格相关关键词
+    const priceKeywords = ['价格', '多少', 'price', 'how much', '建议', 'advice', '投资', 'buy', 'sell', '趋势', 'trend', '分析', 'analysis'];
+    const hasPriceKeyword = priceKeywords.some(keyword => lowerText.includes(keyword));
+    
+    const result = hasCryptoSymbol && hasPriceKeyword;
+    console.log(`[ChatTab] Price query check: "${text.substring(0, 60)}" -> symbol:${hasCryptoSymbol}, keyword:${hasPriceKeyword}, result:${result}`);
+    
+    return result;
   };
 
   // 从价格数据中提取相关价格
@@ -108,18 +149,26 @@ export default function ChatTab({
       
       console.log("Service metadata:", metadata);
 
-      // 检查是否需要获取Binance价格
+      // 检查是否需要获取CoinGecko价格
       let enrichedUserMsg = { ...userMsg };
       if (containsPriceQuery(userMsg.content)) {
         setMessage("正在获取实时价格数据...");
-        console.log("Detecting price query, fetching Binance prices...");
+        console.log("[ChatTab] Detecting price query, fetching CoinGecko prices...");
         
         const priceData = await fetchBinancePrices();
+        console.log(`[ChatTab] Fetched ${priceData.length} prices from CoinGecko`);
+        
         if (priceData.length > 0) {
           const pricesText = extractRelevantPrices(userMsg.content, priceData);
           enrichedUserMsg.content = `${userMsg.content}\n\n[实时市场数据]\n${pricesText}`;
-          console.log("Enriched message with prices:", enrichedUserMsg.content);
+          console.log("[ChatTab] Enriched message with prices:", enrichedUserMsg.content);
+          setMessage("✓ 已获取实时价格，正在发送...");
+        } else {
+          console.warn("[ChatTab] No prices fetched, sending message without prices");
+          setMessage("⚠ 未能获取价格数据，使用原始消息");
         }
+      } else {
+        console.log("[ChatTab] Not a price query, using original message");
       }
 
       const messageBody = [enrichedUserMsg];

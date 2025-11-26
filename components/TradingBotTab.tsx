@@ -46,20 +46,53 @@ export default function TradingBotTab({
     'XRPUSDT',
   ];
 
-  // 从 Binance FAPI 获取价格数据
+  // 从 CoinGecko 获取价格数据（Binance被地理位置限制）
   const fetchPricesFromBinance = async () => {
     try {
-      const response = await fetch('https://fapi.binance.com/fapi/v1/ticker/price');
+      // 币种与CoinGecko ID的映射
+      const coinGeckoMap: Record<string, string> = {
+        BTC: 'bitcoin',
+        ETH: 'ethereum',
+        SOL: 'solana',
+        ADA: 'cardano',
+        XRP: 'ripple',
+        BNB: 'binancecoin',
+        DOGE: 'dogecoin',
+        LINK: 'chainlink',
+        MATIC: 'matic-network',
+        AVAX: 'avalanche-2'
+      };
+
+      const ids = Object.values(coinGeckoMap).join(',');
+      console.log('[TradingBotTab] Fetching prices from CoinGecko...');
+      
+      const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`);
       if (!response.ok) {
-        throw new Error('Failed to fetch price data');
+        throw new Error(`Failed to fetch price data: ${response.status}`);
       }
-      const data: PriceData[] = await response.json();
-      setPriceData(data);
+      
+      const data = await response.json();
+      console.log('[TradingBotTab] CoinGecko response:', data);
+
+      // 转换为 PriceData 格式
+      const priceData: PriceData[] = [];
+      for (const [symbol, coinGeckoId] of Object.entries(coinGeckoMap)) {
+        if (data[coinGeckoId]?.usd) {
+          priceData.push({
+            symbol: `${symbol}USDT`,
+            price: data[coinGeckoId].usd
+          });
+        }
+      }
+
+      console.log(`[TradingBotTab] Converted ${priceData.length} prices`);
+      setPriceData(priceData);
       setLastUpdateTime(new Date().toLocaleTimeString());
-      return data;
+      setMessage('✓ 已获取最新价格数据');
+      return priceData;
     } catch (err) {
-      console.error('获取价格数据失败:', err);
-      setMessage('获取价格数据失败');
+      console.error('[TradingBotTab] 获取价格数据失败:', err);
+      setMessage('❌ 获取价格数据失败: ' + (err instanceof Error ? err.message : String(err)));
       return [];
     }
   };

@@ -117,19 +117,35 @@ export default function TradingBotTab({
         }
       }
 
-      // 调用 AI 模型获取分析
-      const response = await fetch(`${metadata.endpoint}/chat/completions`, {
+      const requestBody = {
+        messages: messageBody,
+        model: metadata.model,
+        stream: false,
+      };
+
+      const endpoint = metadata.endpoint.endsWith('/') 
+        ? metadata.endpoint + 'chat/completions'
+        : metadata.endpoint + '/chat/completions';
+
+      console.log("Trading Bot - Sending request to:", endpoint);
+
+      const response = await fetch(endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify({
-          messages: messageBody,
-          model: metadata.model,
-          stream: false,
-        }),
+        headers: { 
+          "Content-Type": "application/json",
+          ...headers 
+        },
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
-        throw new Error('AI analysis failed');
+        let errorText = "";
+        try {
+          errorText = await response.text();
+        } catch (e) {
+          console.error("Failed to read error response:", e);
+        }
+        throw new Error(`AI analysis failed with status ${response.status}: ${errorText}`);
       }
 
       const result = await response.json();

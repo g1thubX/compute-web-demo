@@ -35,13 +35,32 @@ export default function ChatTab({
     setMessages((prev) => [...prev, userMsg]);
     setInputMessage("");
     setLoading(true);
+    setMessage("正在准备请求...");
 
     try {
+      console.log("Getting service metadata for:", selectedProvider.address);
       const metadata = await broker.inference.getServiceMetadata(selectedProvider.address);
+      
+      if (!metadata || !metadata.endpoint || !metadata.model) {
+        throw new Error("Invalid service metadata: missing endpoint or model");
+      }
+      
+      console.log("Service metadata:", metadata);
+
+      const messageBody = [userMsg];
+      const messageBodyStr = JSON.stringify(messageBody);
+      
+      console.log("Getting request headers...");
       const headers = await broker.inference.getRequestHeaders(
         selectedProvider.address,
-        JSON.stringify([userMsg])
+        messageBodyStr
       );
+      
+      if (!headers || typeof headers !== 'object') {
+        throw new Error("Invalid headers returned from getRequestHeaders");
+      }
+      
+      console.log("Headers obtained successfully");
 
       let account;
       try {
@@ -79,26 +98,72 @@ export default function ChatTab({
         }
       }
 
-      const response = await fetch(`${metadata.endpoint}/chat/completions`, {
+      setMessage("正在发送消息到 AI...");
+
+      const requestBody = {
+        messages: [userMsg],
+        model: metadata.model,
+        stream: false,
+      };
+
+      const requestBodyStr = JSON.stringify(requestBody);
+
+      console.log("Sending request to:", `${metadata.endpoint}/chat/completions`);
+      console.log("Request headers:", headers);
+      console.log("Request body:", requestBodyStr);
+      console.log("Request body (parsed):", requestBody);
+
+      // Validate request before sending
+      if (!requestBody.messages || requestBody.messages.length === 0) {
+        throw new Error("No messages in request body");
+      }
+      if (!requestBody.model) {
+        throw new Error("No model specified in request");
+      }
+
+      const endpoint = metadata.endpoint.endsWith('/') 
+        ? metadata.endpoint + 'chat/completions'
+        : metadata.endpoint + '/chat/completions';
+
+      console.log("Final endpoint URL:", endpoint);
+
+      const response = await fetch(endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify({
-          messages: [userMsg],
-          model: metadata.model,
-          stream: false,
-        }),
+        headers: { 
+          "Content-Type": "application/json",
+          ...headers 
+        },
+        body: requestBodyStr,
       });
 
+      console.log("Response status:", response.status);
+      console.log("Response headers:", Array.from(response.headers.entries()));
+
       if (!response.ok) {
-        throw new Error(`API request failed with status ${response.status}`);
+        let errorText = "";
+        try {
+          errorText = await response.text();
+          console.error("API error response text:", errorText);
+        } catch (e) {
+          console.error("Failed to read error response text:", e);
+        }
+        
+        const errorMessage = errorText 
+          ? `API request failed with status ${response.status}: ${errorText}`
+          : `API request failed with status ${response.status}`;
+        
+        throw new Error(errorMessage);
       }
 
       const result = await response.json();
+      console.log("API response:", result);
 
       if (!result || !result.choices || !result.choices[0] || !result.choices[0].message) {
         console.error("Invalid API response structure:", result);
         throw new Error("Invalid response structure from AI API");
       }
+
+      setMessage("收到 AI 回复，正在处理...");
 
       const aiMsg = {
         role: "assistant",

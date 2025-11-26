@@ -1,5 +1,6 @@
 
 import { useState, useEffect } from 'react';
+import MarkdownMessage from './MarkdownMessage';
 
 interface ChatTabProps {
   broker: any;
@@ -377,11 +378,13 @@ export default function ChatTab({
       
       <div
         style={{
-          height: "300px",
+          height: "500px",
           overflowY: "auto",
           border: "1px solid #ddd",
-          padding: "10px",
+          borderRadius: "6px",
+          padding: "12px",
           marginBottom: "10px",
+          background: "#fff",
         }}
       >
         {messages.length === 0 ? (
@@ -390,20 +393,45 @@ export default function ChatTab({
           </div>
         ) : (
           messages.map((msg, i) => (
-            <div key={i} style={{ marginBottom: "10px" }}>
-              <strong>{msg.role === "user" ? "你" : "AI"}:</strong> {msg.content}
-              {msg.role === "assistant" && msg.id && (
-                <span style={{ 
-                  marginLeft: "10px", 
-                  fontSize: "12px",
-                  color: msg.verifyError ? "#dc3545" : 
-                         msg.verified ? "#28a745" : 
-                         verifyingMessageId === msg.id ? "#ffc107" : "#6c757d"
+            <div key={i} style={{ marginBottom: "15px" }}>
+              <div style={{ display: "flex", alignItems: "center", marginBottom: "5px" }}>
+                <strong style={{ 
+                  color: msg.role === "user" ? "#007bff" : "#28a745",
+                  minWidth: "40px"
                 }}>
-                  {msg.verifyError ? "❌ 验证失败" :
-                   msg.verified ? "✓ 已验证" : 
-                   verifyingMessageId === msg.id ? "⏳ 验证中..." : "⚠️ 未验证"}
-                </span>
+                  {msg.role === "user" ? "👤 你" : "🤖 AI"}:
+                </strong>
+                {msg.role === "assistant" && msg.id && (
+                  <span style={{ 
+                    marginLeft: "10px", 
+                    fontSize: "12px",
+                    color: msg.verifyError ? "#dc3545" : 
+                           msg.verified ? "#28a745" : 
+                           verifyingMessageId === msg.id ? "#ffc107" : "#6c757d",
+                    padding: "2px 6px",
+                    background: msg.verifyError ? "#ffe6e6" :
+                               msg.verified ? "#e6ffe6" :
+                               verifyingMessageId === msg.id ? "#fffce6" : "#f0f0f0",
+                    borderRadius: "3px"
+                  }}>
+                    {msg.verifyError ? "❌ 验证失败" :
+                     msg.verified ? "✓ 已验证" : 
+                     verifyingMessageId === msg.id ? "⏳ 验证中..." : "⚠️ 未验证"}
+                  </span>
+                )}
+              </div>
+              {msg.role === "user" ? (
+                <div style={{ 
+                  background: "#e7f3ff", 
+                  padding: "10px", 
+                  borderRadius: "6px",
+                  borderLeft: "4px solid #007bff",
+                  color: "#333"
+                }}>
+                  {msg.content}
+                </div>
+              ) : (
+                <MarkdownMessage content={msg.content} />
               )}
             </div>
           ))

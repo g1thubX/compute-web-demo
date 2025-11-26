@@ -32,7 +32,7 @@ const zgTestnet = defineChain({
 
 const config = getDefaultConfig({
   appName: '0G Broker Starter Kit',
-  projectId: '11b1b4b2e0f2e8a5c6e0c5e8a5c6e0c5',
+  projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'a8c85ce91b23df9c128e3740ea194282',
   chains: [zgTestnet],
   ssr: true,
 });

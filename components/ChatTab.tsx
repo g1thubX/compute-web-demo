@@ -141,16 +141,34 @@ export default function ChatTab({
 
       if (!response.ok) {
         let errorText = "";
+        let errorObj: any = null;
         try {
           errorText = await response.text();
           console.error("API error response text:", errorText);
+          
+          try {
+            errorObj = JSON.parse(errorText);
+          } catch (e) {
+            // Not JSON
+          }
         } catch (e) {
           console.error("Failed to read error response text:", e);
         }
         
-        const errorMessage = errorText 
-          ? `API request failed with status ${response.status}: ${errorText}`
-          : `API request failed with status ${response.status}`;
+        let errorMessage = `API request failed with status ${response.status}`;
+        
+        if (errorObj && errorObj.error) {
+          const apiError = errorObj.error;
+          console.error("API error object:", errorObj);
+          
+          if (apiError.includes("insufficient balance")) {
+            errorMessage = "余额不足：请先在\"账户\"标签中充值，需要至少 0.5 个 token";
+          } else {
+            errorMessage = apiError;
+          }
+        } else if (errorText) {
+          errorMessage = `${errorMessage}: ${errorText}`;
+        }
         
         throw new Error(errorMessage);
       }

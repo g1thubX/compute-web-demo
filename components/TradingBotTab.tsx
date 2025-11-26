@@ -140,12 +140,35 @@ export default function TradingBotTab({
 
       if (!response.ok) {
         let errorText = "";
+        let errorObj: any = null;
         try {
           errorText = await response.text();
+          console.error("Trading Bot error response:", errorText);
+          
+          try {
+            errorObj = JSON.parse(errorText);
+          } catch (e) {
+            // Not JSON
+          }
         } catch (e) {
           console.error("Failed to read error response:", e);
         }
-        throw new Error(`AI analysis failed with status ${response.status}: ${errorText}`);
+        
+        let errorMessage = `AI analysis failed with status ${response.status}`;
+        
+        if (errorObj && errorObj.error) {
+          const apiError = errorObj.error;
+          
+          if (apiError.includes("insufficient balance")) {
+            errorMessage = "余额不足：请先在\"账户\"标签中充值";
+          } else {
+            errorMessage = apiError;
+          }
+        } else if (errorText) {
+          errorMessage = `${errorMessage}: ${errorText}`;
+        }
+        
+        throw new Error(errorMessage);
       }
 
       const result = await response.json();

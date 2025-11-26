@@ -134,6 +134,7 @@ export default function Home() {
             {activeTab === "account" && (
               <AccountTab
                 broker={broker}
+                selectedProvider={selectedProvider}
                 message={message}
                 setMessage={setMessage}
               />

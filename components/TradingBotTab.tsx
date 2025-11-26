@@ -46,20 +46,53 @@ export default function TradingBotTab({
     'XRPUSDT',
   ];
 
-  // 从 Binance FAPI 获取价格数据
+  // 从 CoinGecko 获取价格数据（Binance被地理位置限制）
   const fetchPricesFromBinance = async () => {
     try {
-      const response = await fetch('https://fapi.binance.com/fapi/v1/ticker/price');
+      // 币种与CoinGecko ID的映射
+      const coinGeckoMap: Record<string, string> = {
+        BTC: 'bitcoin',
+        ETH: 'ethereum',
+        SOL: 'solana',
+        ADA: 'cardano',
+        XRP: 'ripple',
+        BNB: 'binancecoin',
+        DOGE: 'dogecoin',
+        LINK: 'chainlink',
+        MATIC: 'matic-network',
+        AVAX: 'avalanche-2'
+      };
+
+      const ids = Object.values(coinGeckoMap).join(',');
+      console.log('[TradingBotTab] Fetching prices from CoinGecko...');
+      
+      const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`);
       if (!response.ok) {
-        throw new Error('Failed to fetch price data');
+        throw new Error(`Failed to fetch price data: ${response.status}`);
       }
-      const data: PriceData[] = await response.json();
-      setPriceData(data);
+      
+      const data = await response.json();
+      console.log('[TradingBotTab] CoinGecko response:', data);
+
+      // 转换为 PriceData 格式
+      const priceData: PriceData[] = [];
+      for (const [symbol, coinGeckoId] of Object.entries(coinGeckoMap)) {
+        if (data[coinGeckoId]?.usd) {
+          priceData.push({
+            symbol: `${symbol}USDT`,
+            price: data[coinGeckoId].usd
+          });
+        }
+      }
+
+      console.log(`[TradingBotTab] Converted ${priceData.length} prices`);
+      setPriceData(priceData);
       setLastUpdateTime(new Date().toLocaleTimeString());
-      return data;
+      setMessage('✓ 已获取最新价格数据');
+      return priceData;
     } catch (err) {
-      console.error('获取价格数据失败:', err);
-      setMessage('获取价格数据失败');
+      console.error('[TradingBotTab] 获取价格数据失败:', err);
+      setMessage('❌ 获取价格数据失败: ' + (err instanceof Error ? err.message : String(err)));
       return [];
     }
   };
@@ -86,42 +119,98 @@ export default function TradingBotTab({
         JSON.stringify(messageBody)
       );
 
-      // 检查子账户余额
       let account;
       try {
         account = await broker.inference.getAccount(selectedProvider.address);
       } catch (error) {
-        await broker.ledger.transferFund(
-          selectedProvider.address,
-          "inference",
-          BigInt(2e18)
-        );
+        try {
+          await broker.ledger.transferFund(
+            selectedProvider.address,
+            "inference",
+            BigInt(2e18)
+          );
+          account = await broker.inference.getAccount(selectedProvider.address);
+        } catch (transferError) {
+          console.error("账户初始化失败:", transferError);
+          setMessage("账户初始化失败，请检查余额");
+          setProcessingWithAI(false);
+          return;
+        }
       }
 
-      if (account && account.balance <= BigInt(1.5e18)) {
-        await broker.ledger.transferFund(
-          selectedProvider.address,
-          "inference",
-          BigInt(2e18)
-        );
+      if (account && account.balance && account.balance <= BigInt(1.5e18)) {
+        try {
+          await broker.ledger.transferFund(
+            selectedProvider.address,
+            "inference",
+            BigInt(2e18)
+          );
+        } catch (transferError) {
+          console.error("补充资金失败:", transferError);
+        }
       }
 
-      // 调用 AI 模型获取分析
-      const response = await fetch(`${metadata.endpoint}/chat/completions`, {
+      const requestBody = {
+        messages: messageBody,
+        model: metadata.model,
+        stream: false,
+      };
+
+      const endpoint = metadata.endpoint.endsWith('/') 
+        ? metadata.endpoint + 'chat/completions'
+        : metadata.endpoint + '/chat/completions';
+
+      console.log("Trading Bot - Sending request to:", endpoint);
+
+      const response = await fetch(endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify({
-          messages: messageBody,
-          model: metadata.model,
-          stream: false,
-        }),
+        headers: { 
+          "Content-Type": "application/json",
+          ...headers 
+        },
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
-        throw new Error('AI analysis failed');
+        let errorText = "";
+        let errorObj: any = null;
+        try {
+          errorText = await response.text();
+          console.error("Trading Bot error response:", errorText);
+          
+          try {
+            errorObj = JSON.parse(errorText);
+          } catch (e) {
+            // Not JSON
+          }
+        } catch (e) {
+          console.error("Failed to read error response:", e);
+        }
+        
+        let errorMessage = `AI analysis failed with status ${response.status}`;
+        
+        if (errorObj && errorObj.error) {
+          const apiError = errorObj.error;
+          
+          if (apiError.includes("insufficient balance")) {
+            errorMessage = "余额不足：请先在\"账户\"标签中充值";
+          } else {
+            errorMessage = apiError;
+          }
+        } else if (errorText) {
+          errorMessage = `${errorMessage}: ${errorText}`;
+        }
+        
+        throw new Error(errorMessage);
       }
 
       const result = await response.json();
+
+      if (!result || !result.choices || !result.choices[0] || !result.choices[0].message) {
+        console.error("Invalid API response structure:", result);
+        throw new Error("Invalid response structure from AI API");
+      }
+
       const analysisContent = result.choices[0].message.content;
 
       // 验证响应

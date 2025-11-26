@@ -133,6 +133,12 @@ export default function TradingBotTab({
       }
 
       const result = await response.json();
+
+      if (!result || !result.choices || !result.choices[0] || !result.choices[0].message) {
+        console.error("Invalid API response structure:", result);
+        throw new Error("Invalid response structure from AI API");
+      }
+
       const analysisContent = result.choices[0].message.content;
 
       // 验证响应

@@ -89,7 +89,17 @@ export default function ChatTab({
         }),
       });
 
+      if (!response.ok) {
+        throw new Error(`API request failed with status ${response.status}`);
+      }
+
       const result = await response.json();
+
+      if (!result || !result.choices || !result.choices[0] || !result.choices[0].message) {
+        console.error("Invalid API response structure:", result);
+        throw new Error("Invalid response structure from AI API");
+      }
+
       const aiMsg = {
         role: "assistant",
         content: result.choices[0].message.content,

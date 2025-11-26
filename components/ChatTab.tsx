@@ -8,6 +8,11 @@ interface ChatTabProps {
   setMessage: (message: string) => void;
 }
 
+interface PriceData {
+  symbol: string;
+  price: number;
+}
+
 export default function ChatTab({ 
   broker, 
   selectedProvider, 
@@ -20,12 +25,68 @@ export default function ChatTab({
   const [loading, setLoading] = useState(false);
   const [verifyingMessageId, setVerifyingMessageId] = useState<string | null>(null);
 
+  // 常见的加密货币符号
+  const cryptoSymbols = ['BTC', 'ETH', 'SOL', 'ADA', 'XRP', 'BNB', 'DOGE', 'LINK', 'MATIC', 'AVAX'];
+
   // 重置消息历史
   useEffect(() => {
     if (selectedProvider) {
       setMessages([]);
     }
   }, [selectedProvider]);
+
+  // 从Binance获取价格数据
+  const fetchBinancePrices = async (): Promise<PriceData[]> => {
+    try {
+      const response = await fetch('https://fapi.binance.com/fapi/v1/ticker/price');
+      if (!response.ok) {
+        throw new Error('Failed to fetch from Binance');
+      }
+      const data: PriceData[] = await response.json();
+      return data;
+    } catch (err) {
+      console.error('Failed to fetch Binance prices:', err);
+      return [];
+    }
+  };
+
+  // 检查消息是否包含价格查询
+  const containsPriceQuery = (text: string): boolean => {
+    const lowerText = text.toLowerCase();
+    return cryptoSymbols.some(symbol => 
+      lowerText.includes(symbol.toLowerCase()) && 
+      (lowerText.includes('价格') || lowerText.includes('price') || lowerText.includes('建议') || lowerText.includes('advice'))
+    );
+  };
+
+  // 从价格数据中提取相关价格
+  const extractRelevantPrices = (userInput: string, priceData: PriceData[]): string => {
+    const lowerInput = userInput.toLowerCase();
+    const relevantPrices: string[] = [];
+
+    for (const symbol of cryptoSymbols) {
+      if (lowerInput.includes(symbol.toLowerCase())) {
+        const usdtPair = symbol.toUpperCase() + 'USDT';
+        const priceInfo = priceData.find(p => p.symbol === usdtPair);
+        if (priceInfo) {
+          relevantPrices.push(`${usdtPair}: ${parseFloat(priceInfo.price.toString()).toFixed(2)}`);
+        }
+      }
+    }
+
+    if (relevantPrices.length === 0) {
+      // 如果没有找到特定的，返回前几个热门的
+      const topSymbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT'];
+      for (const symbol of topSymbols) {
+        const priceInfo = priceData.find(p => p.symbol === symbol);
+        if (priceInfo) {
+          relevantPrices.push(`${symbol}: ${parseFloat(priceInfo.price.toString()).toFixed(2)}`);
+        }
+      }
+    }
+
+    return relevantPrices.join('\n');
+  };
 
   // 发送消息（基础版本）
   const sendMessage = async () => {
@@ -47,7 +108,21 @@ export default function ChatTab({
       
       console.log("Service metadata:", metadata);
 
-      const messageBody = [userMsg];
+      // 检查是否需要获取Binance价格
+      let enrichedUserMsg = { ...userMsg };
+      if (containsPriceQuery(userMsg.content)) {
+        setMessage("正在获取实时价格数据...");
+        console.log("Detecting price query, fetching Binance prices...");
+        
+        const priceData = await fetchBinancePrices();
+        if (priceData.length > 0) {
+          const pricesText = extractRelevantPrices(userMsg.content, priceData);
+          enrichedUserMsg.content = `${userMsg.content}\n\n[实时市场数据]\n${pricesText}`;
+          console.log("Enriched message with prices:", enrichedUserMsg.content);
+        }
+      }
+
+      const messageBody = [enrichedUserMsg];
       const messageBodyStr = JSON.stringify(messageBody);
       
       console.log("Getting request headers...");
@@ -101,7 +176,7 @@ export default function ChatTab({
       setMessage("正在发送消息到 AI...");
 
       const requestBody = {
-        messages: [userMsg],
+        messages: messageBody,
         model: metadata.model,
         stream: false,
       };

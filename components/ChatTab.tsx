@@ -47,22 +47,36 @@ export default function ChatTab({
       try {
         account = await broker.inference.getAccount(selectedProvider.address);
       } catch (error) {
-        await broker.ledger.transferFund(
-          selectedProvider.address,
-          "inference",
-          BigInt(2e18)
-        );
+        try {
+          await broker.ledger.transferFund(
+            selectedProvider.address,
+            "inference",
+            BigInt(2e18)
+          );
+          account = await broker.inference.getAccount(selectedProvider.address);
+        } catch (transferError) {
+          console.error("转账失败:", transferError);
+          setMessage("账户初始化失败，请检查余额");
+          setLoading(false);
+          return;
+        }
       }
 
       console.log("账户信息:", account);
-      console.log("账户信息:", account.balance);
-      if (account.balance <= BigInt(1.5e18)) {
-        console.log("子账户余额不足，正在充值...");
-        await broker.ledger.transferFund(
-          selectedProvider.address,
-          "inference",
-          BigInt(2e18)
-        );
+      if (account && account.balance) {
+        console.log("账户余额:", account.balance);
+        if (account.balance <= BigInt(1.5e18)) {
+          console.log("子账户余额不足，正在充值...");
+          try {
+            await broker.ledger.transferFund(
+              selectedProvider.address,
+              "inference",
+              BigInt(2e18)
+            );
+          } catch (transferError) {
+            console.error("补充资金失败:", transferError);
+          }
+        }
       }
 
       const response = await fetch(`${metadata.endpoint}/chat/completions`, {
@@ -82,24 +96,23 @@ export default function ChatTab({
         id: result.id,
         verified: false,
       };
-      
+
       setMessages((prev) => [...prev, aiMsg]);
 
-      // 处理验证和计费
       if (result.id) {
         setVerifyingMessageId(result.id);
         setMessage("正在验证响应...");
-        
+
         try {
           await broker.inference.processResponse(
             selectedProvider.address,
             aiMsg.content,
             result.id
           );
-          
-          setMessages((prev) => 
-            prev.map(msg => 
-              msg.id === result.id 
+
+          setMessages((prev) =>
+            prev.map(msg =>
+              msg.id === result.id
                 ? { ...msg, verified: true }
                 : msg
             )
@@ -108,10 +121,9 @@ export default function ChatTab({
         } catch (verifyErr) {
           console.error("验证失败:", verifyErr);
           setMessage("响应验证失败");
-          // 标记验证失败
-          setMessages((prev) => 
-            prev.map(msg => 
-              msg.id === result.id 
+          setMessages((prev) =>
+            prev.map(msg =>
+              msg.id === result.id
                 ? { ...msg, verified: false, verifyError: true }
                 : msg
             )

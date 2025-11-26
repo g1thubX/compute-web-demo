@@ -86,24 +86,35 @@ export default function TradingBotTab({
         JSON.stringify(messageBody)
       );
 
-      // 检查子账户余额
       let account;
       try {
         account = await broker.inference.getAccount(selectedProvider.address);
       } catch (error) {
-        await broker.ledger.transferFund(
-          selectedProvider.address,
-          "inference",
-          BigInt(2e18)
-        );
+        try {
+          await broker.ledger.transferFund(
+            selectedProvider.address,
+            "inference",
+            BigInt(2e18)
+          );
+          account = await broker.inference.getAccount(selectedProvider.address);
+        } catch (transferError) {
+          console.error("账户初始化失败:", transferError);
+          setMessage("账户初始化失败，请检查余额");
+          setProcessingWithAI(false);
+          return;
+        }
       }
 
-      if (account && account.balance <= BigInt(1.5e18)) {
-        await broker.ledger.transferFund(
-          selectedProvider.address,
-          "inference",
-          BigInt(2e18)
-        );
+      if (account && account.balance && account.balance <= BigInt(1.5e18)) {
+        try {
+          await broker.ledger.transferFund(
+            selectedProvider.address,
+            "inference",
+            BigInt(2e18)
+          );
+        } catch (transferError) {
+          console.error("补充资金失败:", transferError);
+        }
       }
 
       // 调用 AI 模型获取分析

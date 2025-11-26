@@ -150,6 +150,45 @@ export default function AccountTab({ broker, message, setMessage, selectedProvid
     setLoading(false);
   };
 
+  // 提现主账户资金
+  const handleWithdraw = async () => {
+    if (!broker || !depositAmount) {
+      setMessage("请输入提现金额");
+      return;
+    }
+
+    setLoading(true);
+    setMessage("正在处理提现...");
+    try {
+      const amount = parseFloat(depositAmount);
+
+      if (amount <= 0) {
+        setMessage("提现金额必须大于0");
+        setLoading(false);
+        return;
+      }
+
+      if (!balance?.main || balance.main.available < amount) {
+        setMessage(`可用余额不足。当前可用: ${balance?.main?.available.toFixed(4) || 0} A0GI`);
+        setLoading(false);
+        return;
+      }
+
+      console.log("提现", amount, "个 token 到钱包");
+      await broker.ledger.withdrawFund(amount);
+
+      setMessage(`✓ 提现 ${amount} A0GI 成功`);
+      setDepositAmount("");
+      
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      await fetchBalance();
+    } catch (err) {
+      console.error("提现失败:", err);
+      setMessage("提现失败: " + (err instanceof Error ? err.message : String(err)));
+    }
+    setLoading(false);
+  };
+
   // 自动获取余额
   useEffect(() => {
     fetchBalance();
@@ -209,46 +248,92 @@ export default function AccountTab({ broker, message, setMessage, selectedProvid
         <p>暂无账本</p>
       )}
 
-      {/* 充值区域 */}
-      <div style={{ 
-        padding: "15px", 
-        background: "#f9f9f9", 
-        borderRadius: "4px",
-        border: "1px solid #ddd",
-        marginBottom: "15px"
-      }}>
-        <strong>充值主账户:</strong>
-        <div style={{ marginTop: "10px", display: "flex", gap: "10px" }}>
-          <input
-            type="number"
-            value={depositAmount}
-            onChange={(e) => setDepositAmount(e.target.value)}
-            placeholder="输入充值金额"
-            style={{ 
-              padding: "8px", 
-              flex: 1,
-              border: "1px solid #ccc",
-              borderRadius: "4px"
-            }}
-          />
-          <button
-            onClick={handleDeposit}
-            disabled={loading}
-            style={{ 
-              padding: "8px 20px",
-              background: "#007bff",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-              cursor: loading ? "not-allowed" : "pointer",
-              opacity: loading ? 0.6 : 1
-            }}
-          >
-            {loading ? "处理中..." : "充值"}
-          </button>
+      {/* 充值和提现区域 */}
+      <div style={{ display: "flex", gap: "15px", marginBottom: "15px" }}>
+        {/* 充值区域 */}
+        <div style={{ 
+          padding: "15px", 
+          background: "#f9f9f9", 
+          borderRadius: "4px",
+          border: "1px solid #ddd",
+          flex: 1
+        }}>
+          <strong>充值主账户:</strong>
+          <div style={{ marginTop: "10px", display: "flex", gap: "10px", flexDirection: "column" }}>
+            <input
+              type="number"
+              value={depositAmount}
+              onChange={(e) => setDepositAmount(e.target.value)}
+              placeholder="输入金额"
+              style={{ 
+                padding: "8px", 
+                border: "1px solid #ccc",
+                borderRadius: "4px"
+              }}
+            />
+            <button
+              onClick={handleDeposit}
+              disabled={loading}
+              style={{ 
+                padding: "8px 20px",
+                background: "#28a745",
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                cursor: loading ? "not-allowed" : "pointer",
+                opacity: loading ? 0.6 : 1
+              }}
+            >
+              {loading ? "处理中..." : "充值"}
+            </button>
+          </div>
+          <div style={{ fontSize: "12px", color: "#666", marginTop: "8px" }}>
+            推荐: 2-5 个 token
+          </div>
         </div>
-        <div style={{ fontSize: "12px", color: "#666", marginTop: "5px" }}>
-          推荐充值金额: 2-5 个 token
+
+        {/* 提现区域 */}
+        <div style={{ 
+          padding: "15px", 
+          background: "#ffe8e8", 
+          borderRadius: "4px",
+          border: "1px solid #ff9999",
+          flex: 1
+        }}>
+          <strong>提现到钱包:</strong>
+          <div style={{ marginTop: "10px", display: "flex", gap: "10px", flexDirection: "column" }}>
+            <input
+              type="number"
+              value={depositAmount}
+              onChange={(e) => setDepositAmount(e.target.value)}
+              placeholder="输入金额"
+              style={{ 
+                padding: "8px", 
+                border: "1px solid #ccc",
+                borderRadius: "4px"
+              }}
+            />
+            <button
+              onClick={handleWithdraw}
+              disabled={loading || !balance?.main?.available || balance.main.available <= 0}
+              style={{ 
+                padding: "8px 20px",
+                background: "#dc3545",
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                cursor: (loading || !balance?.main?.available || balance.main.available <= 0) ? "not-allowed" : "pointer",
+                opacity: (loading || !balance?.main?.available || balance.main.available <= 0) ? 0.6 : 1
+              }}
+            >
+              {loading ? "处理中..." : "提现"}
+            </button>
+          </div>
+          <div style={{ fontSize: "12px", color: "#666", marginTop: "8px" }}>
+            {balance?.main?.available && balance.main.available > 0 
+              ? `可提现: ${balance.main.available.toFixed(4)} A0GI`
+              : "余额不足"}
+          </div>
         </div>
       </div>
 
